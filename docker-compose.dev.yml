@@ -1,0 +1,30 @@
+version: "3.9"
+
+# Development overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      target: deps          # stop at deps stage, mount source live
+    volumes:
+      - ./backend:/app
+      - /app/node_modules   # anonymous volume keeps container node_modules
+    environment:
+      NODE_ENV: "development"
+    command: ["node", "--watch", "server.js"]
+
+  frontend:
+    build:
+      context: ./frontend
+      target: builder       # stop at builder stage
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "6002:5173"
+    environment:
+      VITE_API_PROXY_TARGET: "http://backend:3001"
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
