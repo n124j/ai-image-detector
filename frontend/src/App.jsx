@@ -1,6 +1,22 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 /* ─── helpers ─────────────────────────────────────────────── */
+const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const MAX_FILE_BYTES  = 5 * 1024 * 1024; // Anthropic's 5 MB limit
+
+// Detect real format from magic bytes — browser file.type trusts the extension,
+// which is wrong for renamed files (e.g. a JPEG saved as .png).
+const detectMediaType = async (file) => {
+  const buf   = await file.slice(0, 12).arrayBuffer();
+  const b     = new Uint8Array(buf);
+  if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return "image/jpeg";
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return "image/png";
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return "image/gif";
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return "image/webp";
+  return file.type; // unknown — fall back and let validation catch it
+};
+
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -51,9 +67,16 @@ export default function App() {
     if (!file || !file.type.startsWith("image/")) {
       setError("Please provide a valid image file."); return;
     }
+    if (file.size > MAX_FILE_BYTES) {
+      setError(`Image too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 5 MB.`); return;
+    }
+    const mediaType = await detectMediaType(file);
+    if (!SUPPORTED_TYPES.has(mediaType)) {
+      setError(`Unsupported format (${mediaType}). Please convert to JPEG, PNG, GIF, or WebP first.`); return;
+    }
     const base64 = await fileToBase64(file);
     const src    = URL.createObjectURL(file);
-    setImage({ src, base64, mediaType: file.type, meta: extractMetadata(file), mode: "base64" });
+    setImage({ src, base64, mediaType, meta: extractMetadata(file), mode: "base64" });
     setResult(null); setError(null); setPhase("uploaded");
   };
 

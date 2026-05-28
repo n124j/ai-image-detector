@@ -7,6 +7,9 @@ import { createServer } from "http";
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
+
+// Trust one proxy layer (nginx) so rate-limiting reads X-Forwarded-For correctly
+app.set("trust proxy", 1);
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
 /* ── security middleware ───────────────────────────────────── */
@@ -36,6 +39,8 @@ app.get("/health", (_req, res) => {
   });
 });
 
+const SUPPORTED_MEDIA_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
 /* ── analyse endpoint ─────────────────────────────────────── */
 app.post("/api/analyse", async (req, res) => {
   const { imageSource, metadata } = req.body;
@@ -46,6 +51,20 @@ app.post("/api/analyse", async (req, res) => {
 
   if (!imageSource) {
     return res.status(400).json({ error: "Missing imageSource in request body." });
+  }
+
+  if (imageSource.type === "base64") {
+    if (!SUPPORTED_MEDIA_TYPES.has(imageSource.media_type)) {
+      return res.status(400).json({
+        error: `Unsupported image format: "${imageSource.media_type || "(none)"}". Use JPEG, PNG, GIF, or WebP.`,
+      });
+    }
+    const rawBytes = (imageSource.data?.length ?? 0) * 0.75;
+    if (rawBytes > 5 * 1024 * 1024) {
+      return res.status(400).json({
+        error: `Image too large (${(rawBytes / 1024 / 1024).toFixed(1)} MB). Anthropic's limit is 5 MB.`,
+      });
+    }
   }
 
   const SYSTEM_PROMPT = `You are an expert forensic analyst specialising in detecting AI-generated images.
@@ -101,9 +120,11 @@ Respond ONLY in this exact JSON (no markdown, no backticks):
     });
 
     if (!anthropicRes.ok) {
-      const errBody = await anthropicRes.text();
-      console.error("Anthropic API error:", anthropicRes.status, errBody);
-      return res.status(anthropicRes.status).json({ error: "Anthropic API error.", detail: errBody });
+      const errText = await anthropicRes.text();
+      console.error("Anthropic API error:", anthropicRes.status, errText);
+      let message = "Anthropic API error.";
+      try { message = JSON.parse(errText)?.error?.message || message; } catch {}
+      return res.status(anthropicRes.status).json({ error: message });
     }
 
     const data   = await anthropicRes.json();
