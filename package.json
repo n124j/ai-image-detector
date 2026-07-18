@@ -1,0 +1,14 @@
+{
+  "name": "ai-image-detector-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker deployment (frontend static assets + API) for AI Image Detector",
+  "scripts": {
+    "build": "npm --prefix frontend install && npm --prefix frontend run build",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.112.0"
+  }
+}

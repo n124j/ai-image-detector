@@ -101,6 +101,22 @@ Add a load balancer (e.g. Traefik or HAProxy) in front for production multi-inst
 
 ### Deploy to cloud
 
+#### Cloudflare (Worker + static assets)
+
+This repo also includes a Cloudflare deployment that needs no Docker/nginx: a single Worker
+(`worker/src/index.js`, configured by the root `wrangler.toml`) serves the built React app as
+static assets and handles `/api/analyse` + `/health` itself, using Cloudflare's native Rate
+Limiting binding (20 req/min/IP) instead of `express-rate-limit`. Same origin, so no CORS needed.
+
+```bash
+npm install                          # installs wrangler
+npx wrangler secret put ANTHROPIC_API_KEY
+npm run deploy                       # builds frontend/dist, then wrangler deploy
+```
+
+Local dev: `npm run dev` (builds once, then runs `wrangler dev` — hit `http://127.0.0.1:8787`).
+`backend/` and `frontend/`'s Docker setup are unaffected and still work independently.
+
 #### Fly.io
 ```bash
 fly launch          # detects docker-compose automatically
